@@ -12,17 +12,16 @@ Then binarize the trees in the new tree bank
 cat train.trees.unk | python binarize.py > train.trees.unk.bin
 ```
 
-Then learn the PCFG
+To learn the PCFG
 ```
 cat train.trees.unk.bin | python learn_pcfg.py > grammar.pcfg.bin
 ```
 
-Run the CYK parser
+To run the CKY parser
 ```
 cat test.txt | python cky.py grammar.pcfg.bin train.dict > test.parsed.new
 ```
-
-Evaluate the results
+To evaluate
 ```
 python evalb.py test.trees test.parsed.new
 ```
