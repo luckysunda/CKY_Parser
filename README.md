@@ -25,3 +25,14 @@ To evaluate
 ```
 python evalb.py test.trees test.parsed.new
 ```
+
+
+Or we can also run it by the shell script:
+ 
+ ```
+ chmod +x run.sh
+ 
+ bash run.sh
+ 
+ ```
+ It will take sentences from test file and produce output in separate text file.
