@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-
-''' simplified PARSEVAL.
-    author: David Chiang <chiang@isi.edu>, Liang Huang <lhuang@isi.edu>
-'''
 
 import sys
 logs = sys.stderr
