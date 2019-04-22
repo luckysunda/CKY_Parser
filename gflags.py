@@ -1,304 +1,4 @@
-#!/usr/bin/env python
-
-# Copyright (c) 2007, Google Inc.
-# All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
-#
-#     * Redistributions of source code must retain the above copyright
-# notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above
-# copyright notice, this list of conditions and the following disclaimer
-# in the documentation and/or other materials provided with the
-# distribution.
-#     * Neither the name of Google Inc. nor the names of its
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# ---
-# Author: Chad Lester
-# Design and style contributions by:
-#   Amit Patel, Bogdan Cocosel, Daniel Dulitz, Eric Tiedemann,
-#   Eric Veach, Laurence Gonsalves, Matthew Springer
-# Code reorganized a bit by Craig Silverstein
-
-"""This module is used to define and parse command line flags.
-
-This module defines a *distributed* flag-definition policy: rather than
-an application having to define all flags in or near main(), each python
-module defines flags that are useful to it.  When one python module
-imports another, it gains access to the other's flags.  (This is
-implemented by having all modules share a common, global registry object
-containing all the flag information.)
-
-Flags are defined through the use of one of the DEFINE_xxx functions.
-The specific function used determines how the flag is parsed, checked,
-and optionally type-converted, when it's seen on the command line.
-
-
-IMPLEMENTATION: DEFINE_* creates a 'Flag' object and registers it with a
-'FlagValues' object (typically the global FlagValues FLAGS, defined
-here).  The 'FlagValues' object can scan the command line arguments and
-pass flag arguments to the corresponding 'Flag' objects for
-value-checking and type conversion.  The converted flag values are
-available as attributes of the 'FlagValues' object.
-
-Code can access the flag through a FlagValues object, for instance
-gflags.FLAGS.myflag.  Typically, the __main__ module passes the
-command line arguments to gflags.FLAGS for parsing.
-
-At bottom, this module calls getopt(), so getopt functionality is
-supported, including short- and long-style flags, and the use of -- to
-terminate flags.
-
-Methods defined by the flag module will throw 'FlagsError' exceptions.
-The exception argument will be a human-readable string.
-
-
-FLAG TYPES: This is a list of the DEFINE_*'s that you can do.  All flags
-take a name, default value, help-string, and optional 'short' name
-(one-letter name).  Some flags have other arguments, which are described
-with the flag.
-
-DEFINE_string: takes any input, and interprets it as a string.
-
-DEFINE_bool or
-DEFINE_boolean: typically does not take an argument: say --myflag to
-                set FLAGS.myflag to true, or --nomyflag to set
-                FLAGS.myflag to false.  Alternately, you can say
-                   --myflag=true  or --myflag=t or --myflag=1  or
-                   --myflag=false or --myflag=f or --myflag=0
-
-DEFINE_float: takes an input and interprets it as a floating point
-              number.  Takes optional args lower_bound and upper_bound;
-              if the number specified on the command line is out of
-              range, it will raise a FlagError.
-
-DEFINE_integer: takes an input and interprets it as an integer.  Takes
-                optional args lower_bound and upper_bound as for floats.
-
-DEFINE_enum: takes a list of strings which represents legal values.  If
-             the command-line value is not in this list, raise a flag
-             error.  Otherwise, assign to FLAGS.flag as a string.
-
-DEFINE_list: Takes a comma-separated list of strings on the commandline.
-             Stores them in a python list object.
-
-DEFINE_spaceseplist: Takes a space-separated list of strings on the
-                     commandline.  Stores them in a python list object.
-                     Example: --myspacesepflag "foo bar baz"
-
-DEFINE_multistring: The same as DEFINE_string, except the flag can be
-                    specified more than once on the commandline.  The
-                    result is a python list object (list of strings),
-                    even if the flag is only on the command line once.
-
-DEFINE_multi_int: The same as DEFINE_integer, except the flag can be
-                  specified more than once on the commandline.  The
-                  result is a python list object (list of ints), even if
-                  the flag is only on the command line once.
-
-
-SPECIAL FLAGS: There are a few flags that have special meaning:
-   --help          prints a list of all the flags in a human-readable fashion
-   --helpshort     prints a list of all key flags (see below).
-   --helpxml       prints a list of all flags, in XML format.  DO NOT parse
-                   the output of --help and --helpshort.  Instead, parse
-                   the output of --helpxml.  As we add new flags, we may
-                   add new XML elements.  Hence, make sure your parser
-                   does not crash when it encounters new XML elements.
-   --flagfile=foo  read flags from foo.
-   --undefok=f1,f2 ignore unrecognized option errors for f1,f2.
-                   For boolean flags, you should use --undefok=boolflag, and
-                   --boolflag and --noboolflag will be accepted.  Do not use
-                   --undefok=noboolflag.
-   --              as in getopt(), terminates flag-processing
-
-
-NOTE ON --flagfile:
-
-Flags may be loaded from text files in addition to being specified on
-the commandline.
-
-Any flags you don't feel like typing, throw them in a file, one flag per
-line, for instance:
-   --myflag=myvalue
-   --nomyboolean_flag
-You then specify your file with the special flag '--flagfile=somefile'.
-You CAN recursively nest flagfile= tokens OR use multiple files on the
-command line.  Lines beginning with a single hash '#' or a double slash
-'//' are comments in your flagfile.
-
-Any flagfile=<file> will be interpreted as having a relative path from
-the current working directory rather than from the place the file was
-included from:
-   myPythonScript.py --flagfile=config/somefile.cfg
-
-If somefile.cfg includes further --flagfile= directives, these will be
-referenced relative to the original CWD, not from the directory the
-including flagfile was found in!
-
-The caveat applies to people who are including a series of nested files
-in a different dir than they are executing out of.  Relative path names
-are always from CWD, not from the directory of the parent include
-flagfile. We do now support '~' expanded directory names.
-
-Absolute path names ALWAYS work!
-
-
-EXAMPLE USAGE:
-
-  import gflags
-  FLAGS = gflags.FLAGS
-
-  # Flag names are globally defined!  So in general, we need to be
-  # careful to pick names that are unlikely to be used by other libraries.
-  # If there is a conflict, we'll get an error at import time.
-  gflags.DEFINE_string('name', 'Mr. President', 'your name')
-  gflags.DEFINE_integer('age', None, 'your age in years', lower_bound=0)
-  gflags.DEFINE_boolean('debug', False, 'produces debugging output')
-  gflags.DEFINE_enum('gender', 'male', ['male', 'female'], 'your gender')
-
-  def main(argv):
-    try:
-      argv = FLAGS(argv)  # parse flags
-    except gflags.FlagsError, e:
-      print '%s\\nUsage: %s ARGS\\n%s' % (e, sys.argv[0], FLAGS)
-      sys.exit(1)
-    if FLAGS.debug: print 'non-flag arguments:', argv
-    print 'Happy Birthday', FLAGS.name
-    if FLAGS.age is not None:
-      print 'You are a %s, who is %d years old' % (FLAGS.gender, FLAGS.age)
-
-  if __name__ == '__main__':
-    main(sys.argv)
-
-
-KEY FLAGS:
-
-As we already explained, each module gains access to all flags defined
-by all the other modules it transitively imports.  In the case of
-non-trivial scripts, this means a lot of flags ...  For documentation
-purposes, it is good to identify the flags that are key (i.e., really
-important) to a module.  Clearly, the concept of "key flag" is a
-subjective one.  When trying to determine whether a flag is key to a
-module or not, assume that you are trying to explain your module to a
-potential user: which flags would you really like to mention first?
-
-We'll describe shortly how to declare which flags are key to a module.
-For the moment, assume we know the set of key flags for each module.
-Then, if you use the app.py module, you can use the --helpshort flag to
-print only the help for the flags that are key to the main module, in a
-human-readable format.
-
-NOTE: If you need to parse the flag help, do NOT use the output of
---help / --helpshort.  That output is meant for human consumption, and
-may be changed in the future.  Instead, use --helpxml; flags that are
-key for the main module are marked there with a <key>yes</key> element.
-
-The set of key flags for a module M is composed of:
-
-1. Flags defined by module M by calling a DEFINE_* function.
-
-2. Flags that module M explictly declares as key by using the function
-
-     DECLARE_key_flag(<flag_name>)
-
-3. Key flags of other modules that M specifies by using the function
-
-     ADOPT_module_key_flags(<other_module>)
-
-   This is a "bulk" declaration of key flags: each flag that is key for
-   <other_module> becomes key for the current module too.
-
-Notice that if you do not use the functions described at points 2 and 3
-above, then --helpshort prints information only about the flags defined
-by the main module of our script.  In many cases, this behavior is good
-enough.  But if you move part of the main module code (together with the
-related flags) into a different module, then it is nice to use
-DECLARE_key_flag / ADOPT_module_key_flags and make sure --helpshort
-lists all relevant flags (otherwise, your code refactoring may confuse
-your users).
-
-Note: each of DECLARE_key_flag / ADOPT_module_key_flags has its own
-pluses and minuses: DECLARE_key_flag is more targeted and may lead a
-more focused --helpshort documentation.  ADOPT_module_key_flags is good
-for cases when an entire module is considered key to the current script.
-Also, it does not require updates to client scripts when a new flag is
-added to the module.
-
-
-EXAMPLE USAGE 2 (WITH KEY FLAGS):
-
-Consider an application that contains the following three files (two
-auxiliary modules and a main module):
-
-File libfoo.py:
-
-  import gflags
-
-  gflags.DEFINE_integer('num_replicas', 3, 'Number of replicas to start')
-  gflags.DEFINE_boolean('rpc2', True, 'Turn on the usage of RPC2.')
-
-  ... some code ...
-
-File libbar.py:
-
-  import gflags
-
-  gflags.DEFINE_string('bar_gfs_path', '/gfs/path',
-                       'Path to the GFS files for libbar.')
-  gflags.DEFINE_string('email_for_bar_errors', 'bar-team@google.com',
-                       'Email address for bug reports about module libbar.')
-  gflags.DEFINE_boolean('bar_risky_hack', False,
-                        'Turn on an experimental and buggy optimization.')
-
-  ... some code ...
-
-File myscript.py:
-
-  import gflags
-  import libfoo
-  import libbar
-
-  gflags.DEFINE_integer('num_iterations', 0, 'Number of iterations.')
-
-  # Declare that all flags that are key for libfoo are
-  # key for this module too.
-  gflags.ADOPT_module_key_flags(libfoo)
-
-  # Declare that the flag --bar_gfs_path (defined in libbar) is key
-  # for this module.
-  gflags.DECLARE_key_flag('bar_gfs_path')
-
-  ... some code ...
-
-When myscript is invoked with the flag --helpshort, the resulted help
-message lists information about all the key flags for myscript:
---num_iterations, --num_replicas, --rpc2, and --bar_gfs_path (in
-addition to the special flags --help and --helpshort).
-
-Of course, myscript uses all the flags declared by it (in this case,
-just --num_replicas) or by any of the modules it transitively imports
-(e.g., the modules libfoo, libbar).  E.g., it can access the value of
-FLAGS.bar_risky_hack, even if --bar_risky_hack is not declared as a key
-flag for myscript.
-"""
-
 import cgi
 import getopt
 import os
@@ -306,15 +6,13 @@ import re
 import string
 import sys
 
-# Are we running at least python 2.2?                                           
+                                         
 try:
   if tuple(sys.version_info[:3]) < (2,2,0):
     raise NotImplementedError("requires python 2.2.0 or later")
 except AttributeError:   # a very old python, that lacks sys.version_info       
   raise NotImplementedError("requires python 2.2.0 or later")
-
-# If we're not running at least python 2.2.1, define True, False, and bool.     
-# Thanks, Guido, for the code.                                                  
+                                                 
 try:
   True, False, bool
 except NameError:
@@ -326,7 +24,7 @@ except NameError:
     else:
       return False
 
-# Are we running under pychecker?
+
 _RUNNING_PYCHECKER = 'pychecker.python' in sys.modules
 
 
@@ -336,7 +34,7 @@ def _GetCallingModule():
   We generally use this function to get the name of the module calling a
   DEFINE_foo... function.
   """
-  # Walk down the stack to find the first globals dict that's not ours.
+
   for depth in range(1, sys.getrecursionlimit()):
     if not sys._getframe(depth).f_globals is globals():
       module_name = __GetModuleName(sys._getframe(depth).f_globals)
@@ -345,7 +43,7 @@ def _GetCallingModule():
   raise AssertionError("No module was found")
 
 
-# module exceptions:
+
 class FlagsError(Exception):
   """The base class for all flags errors."""
   pass
@@ -356,9 +54,6 @@ class DuplicateFlag(FlagsError):
   pass
 
 
-# A DuplicateFlagError conveys more information than a
-# DuplicateFlag. Since there are external modules that create
-# DuplicateFlags, the interface to DuplicateFlag shouldn't change.
 class DuplicateFlagError(DuplicateFlag):
 
   def __init__(self, flagname, flag_values):
@@ -382,11 +77,6 @@ class IllegalFlagValue(FlagsError):
 class UnrecognizedFlag(FlagsError):
   """Raised if a flag is unrecognized."""
   pass
-
-
-# An UnrecognizedFlagError conveys more information than an
-# UnrecognizedFlag. Since there are external modules that create
-# DuplicateFlags, the interface to DuplicateFlag shouldn't change.
 class UnrecognizedFlagError(UnrecognizedFlag):
   def __init__(self, flagname):
     self.flagname = flagname
@@ -394,7 +84,6 @@ class UnrecognizedFlagError(UnrecognizedFlag):
         self, "Unknown command line flag '%s'" % flagname)
 
 
-# Global variable used by expvar
 _exported_flags = {}
 _help_width = 80  # width of help output
 
@@ -405,26 +94,7 @@ def GetHelpWidth():
 
 
 def CutCommonSpacePrefix(text):
-  """Removes a common space prefix from the lines of a multiline text.
-
-  If the first line does not start with a space, it is left as it is and
-  only in the remaining lines a common space prefix is being searched
-  for. That means the first line will stay untouched. This is especially
-  useful to turn doc strings into help texts. This is because some
-  people prefer to have the doc comment start already after the
-  apostrophy and then align the following lines while others have the
-  apostrophies on a seperately line.
-
-  The function also drops trailing empty lines and ignores empty lines
-  following the initial content line while calculating the initial
-  common whitespace.
-
-  Args:
-    text: text to work on
-
-  Returns:
-    the resulting text
-  """
+ 
   text_lines = text.splitlines()
   # Drop trailing empty lines
   while text_lines and not text_lines[-1]:
@@ -448,36 +118,14 @@ def CutCommonSpacePrefix(text):
 
 
 def TextWrap(text, length=None, indent='', firstline_indent=None, tabs='    '):
-  """Wraps a given text to a maximum line length and returns it.
-
-  We turn lines that only contain whitespaces into empty lines.  We keep
-  new lines and tabs (e.g., we do not treat tabs as spaces).
-
-  Args:
-    text:             text to wrap
-    length:           maximum length of a line, includes indentation
-                      if this is None then use GetHelpWidth()
-    indent:           indent for all but first line
-    firstline_indent: indent for first line; if None, fall back to indent
-    tabs:             replacement for tabs
-
-  Returns:
-    wrapped text
-
-  Raises:
-    FlagsError: if indent not shorter than length
-    FlagsError: if firstline_indent not shorter than length
-  """
-  # Get defaults where callee used None
+  
   if length is None:
     length = GetHelpWidth()
   if indent is None:
     indent = ''
   if len(indent) >= length:
     raise FlagsError('Indent must be shorter than length')
-  # In line we will be holding the current line which is to be started
-  # with indent (or firstline_indent if available) and then appended
-  # with words.
+ 
   if firstline_indent is None:
     firstline_indent = ''
     line = indent
@@ -486,9 +134,7 @@ def TextWrap(text, length=None, indent='', firstline_indent=None, tabs='    '):
     if len(firstline_indent) >= length:
       raise FlagsError('First iline indent must be shorter than length')
 
-  # If the callee does not care about tabs we simply convert them to
-  # spaces If callee wanted tabs to be single space then we do that
-  # already here.
+
   if not tabs or tabs == ' ':
     text = text.replace('\t', ' ')
   else:
@@ -496,61 +142,46 @@ def TextWrap(text, length=None, indent='', firstline_indent=None, tabs='    '):
 
   line_regex = re.compile('([ ]*)(\t*)([^ \t]+)', re.MULTILINE)
 
-  # Split the text into lines and the lines with the regex above. The
-  # resulting lines are collected in result[]. For each split we get the
-  # spaces, the tabs and the next non white space (e.g. next word).
+
   result = []
   for text_line in text.splitlines():
-    # Store result length so we can find out whether processing the next
-    # line gave any new content
+    
     old_result_len = len(result)
-    # Process next line with line_regex. For optimization we do an rstrip().
-    # - process tabs (changes either line or word, see below)
-    # - process word (first try to squeeze on line, then wrap or force wrap)
-    # Spaces found on the line are ignored, they get added while wrapping as
-    # needed.
+    
     for spaces, current_tabs, word in line_regex.findall(text_line.rstrip()):
-      # If tabs weren't converted to spaces, handle them now
+
       if current_tabs:
-        # If the last thing we added was a space anyway then drop
-        # it. But let's not get rid of the indentation.
+       
         if (((result and line != indent) or
              (not result and line != firstline_indent)) and line[-1] == ' '):
           line = line[:-1]
-        # Add the tabs, if that means adding whitespace, just add it at
-        # the line, the rstrip() code while shorten the line down if
-        # necessary
+      
         if tabs_are_whitespace:
           line += tabs * len(current_tabs)
         else:
-          # if not all tab replacement is whitespace we prepend it to the word
+          
           word = tabs * len(current_tabs) + word
-      # Handle the case where word cannot be squeezed onto current last line
+
       if len(line) + len(word) > length and len(indent) + len(word) <= length:
         result.append(line.rstrip())
         line = indent + word
         word = ''
-        # No space left on line or can we append a space?
+  
         if len(line) + 1 >= length:
           result.append(line.rstrip())
           line = indent
         else:
           line += ' '
-      # Add word and shorten it up to allowed line length. Restart next
-      # line with indent and repeat, or add a space if we're done (word
-      # finished) This deals with words that caanot fit on one line
-      # (e.g. indent + word longer than allowed line length).
+     
       while len(line) + len(word) >= length:
         line += word
         result.append(line[:length])
         word = line[length:]
         line = indent
-      # Default case, simply append the word and a space
+   
       if word:
         line += word + ' '
-    # End of input line. If we have content we finish the line. If the
-    # current line is just the indent but we had content in during this
-    # original line then we need to add an emoty line.
+  
     if (result and line != indent) or (not result and line != firstline_indent):
       result.append(line.rstrip())
     elif len(result) == old_result_len:
@@ -561,42 +192,24 @@ def TextWrap(text, length=None, indent='', firstline_indent=None, tabs='    '):
 
 
 def DocToHelp(doc):
-  """Takes a __doc__ string and reformats it as help."""
-
-  # Get rid of starting and ending white space. Using lstrip() or even
-  # strip() could drop more than maximum of first line and right space
-  # of last line.
+ 
   doc = doc.strip()
 
-  # Get rid of all empty lines
+
   whitespace_only_line = re.compile('^[ \t]+$', re.M)
   doc = whitespace_only_line.sub('', doc)
 
-  # Cut out common space at line beginnings
+
   doc = CutCommonSpacePrefix(doc)
 
-  # Just like this module's comment, comments tend to be aligned somehow.
-  # In other words they all start with the same amount of white space
-  # 1) keep double new lines
-  # 2) keep ws after new lines if not empty line
-  # 3) all other new lines shall be changed to a space
-  # Solution: Match new lines between non white space and replace with space.
+ 
   doc = re.sub('(?<=\S)\n(?=\S)', ' ', doc, re.M)
 
   return doc
 
 
 def __GetModuleName(globals_dict):
-  """Given a globals dict, returns the name of the module that defines it.
 
-  Args:
-    globals_dict: A dictionary that should correspond to an environment
-      providing the values of the globals.
-
-  Returns:
-    A string (the name of the module) or None (if the module could not
-    be identified.
-  """
   for name, module in sys.modules.iteritems():
     if getattr(module, '__dict__', None) is globals_dict:
       if name == '__main__':
@@ -606,7 +219,7 @@ def __GetModuleName(globals_dict):
 
 
 def _GetMainModule():
-  """Returns the name of the module from which execution started."""
+
   for depth in range(1, sys.getrecursionlimit()):
     try:
       globals_of_main = sys._getframe(depth).f_globals
@@ -614,154 +227,66 @@ def _GetMainModule():
       return __GetModuleName(globals_of_main)
   raise AssertionError("No module was found")
 
-# lhuang: main entry here
+
 class FlagValues:
-  """Registry of 'Flag' objects.
-
-  A 'FlagValues' can then scan command line arguments, passing flag
-  arguments through to the 'Flag' objects that it owns.  It also
-  provides easy access to the flag values.  Typically only one
-  'FlagValues' object is needed by an application: gflags.FLAGS
-
-  This class is heavily overloaded:
-
-  'Flag' objects are registered via __setitem__:
-       FLAGS['longname'] = x   # register a new flag
-
-  The .value attribute of the registered 'Flag' objects can be accessed
-  as attributes of this 'FlagValues' object, through __getattr__.  Both
-  the long and short name of the original 'Flag' objects can be used to
-  access its value:
-       FLAGS.longname          # parsed flag value
-       FLAGS.x                 # parsed flag value (short name)
-
-  Command line arguments are scanned and passed to the registered 'Flag'
-  objects through the __call__ method.  Unparsed arguments, including
-  argv[0] (e.g. the program name) are returned.
-       argv = FLAGS(sys.argv)  # scan command line arguments
-
-  The original registered Flag objects can be retrieved through the use
-  of the dictionary-like operator, __getitem__:
-       x = FLAGS['longname']   # access the registered Flag object
-
-  The str() operator of a 'FlagValues' object provides help for all of
-  the registered 'Flag' objects.
-  """
-
+ 
   def __init__(self):
-    # Since everything in this class is so heavily overloaded, the only
-    # way of defining and using fields is to access __dict__ directly.
-
-    # Dictionary: flag name (string) -> Flag object.
+   
     self.__dict__['__flags'] = {}
-    # Dictionary: module name (string) -> list of Flag objects that are defined
-    # by that module.
+    
     self.__dict__['__flags_by_module'] = {}
-    # Dictionary: module name (string) -> list of Flag objects that are
-    # key for that module.
+  
     self.__dict__['__key_flags_by_module'] = {}
 
   def FlagDict(self):
     return self.__dict__['__flags']
 
   def FlagsByModuleDict(self):
-    """Returns the dictionary of module_name -> list of defined flags.
-
-    Returns:
-      A dictionary.  Its keys are module names (strings).  Its values
-      are lists of Flag objects.
-    """
+    
     return self.__dict__['__flags_by_module']
 
   def KeyFlagsByModuleDict(self):
-    """Returns the dictionary of module_name -> list of key flags.
-
-    Returns:
-      A dictionary.  Its keys are module names (strings).  Its values
-      are lists of Flag objects.
-    """
+    
     return self.__dict__['__key_flags_by_module']
 
   def _RegisterFlagByModule(self, module_name, flag):
-    """Records the module that defines a specific flag.
-
-    We keep track of which flag is defined by which module so that we
-    can later sort the flags by module.
-
-    Args:
-      module_name: A string, the name of a Python module.
-      flag: A Flag object, a flag that is key to the module.
-    """
+   
     flags_by_module = self.FlagsByModuleDict()
     flags_by_module.setdefault(module_name, []).append(flag)
 
   def _RegisterKeyFlagForModule(self, module_name, flag):
-    """Specifies that a flag is a key flag for a module.
-
-    Args:
-      module_name: A string, the name of a Python module.
-      flag: A Flag object, a flag that is key to the module.
-    """
+   
     key_flags_by_module = self.KeyFlagsByModuleDict()
-    # The list of key flags for the module named module_name.
+   
     key_flags = key_flags_by_module.setdefault(module_name, [])
-    # Add flag, but avoid duplicates.
+   
     if flag not in key_flags:
       key_flags.append(flag)
 
   def _GetFlagsDefinedByModule(self, module):
-    """Returns the list of flags defined by a module.
-
-    Args:
-      module: A module object or a module name (a string).
-
-    Returns:
-      A new list of Flag objects.  Caller may update this list as he
-      wishes: none of those changes will affect the internals of this
-      FlagValue object.
-    """
+    
     if not isinstance(module, str):
       module = module.__name__
 
     return list(self.FlagsByModuleDict().get(module, []))
 
   def _GetKeyFlagsForModule(self, module):
-    """Returns the list of key flags for a module.
-
-    Args:
-      module: A module object or a module name (a string)
-
-    Returns:
-      A new list of Flag objects.  Caller may update this list as he
-      wishes: none of those changes will affect the internals of this
-      FlagValue object.
-    """
+   
     if not isinstance(module, str):
       module = module.__name__
 
-    # Any flag is a key flag for the module that defined it.  NOTE:
-    # key_flags is a fresh list: we can update it without affecting the
-    # internals of this FlagValues object.
     key_flags = self._GetFlagsDefinedByModule(module)
 
-    # Take into account flags explicitly declared as key for a module.
+  
     for flag in self.KeyFlagsByModuleDict().get(module, []):
       if flag not in key_flags:
         key_flags.append(flag)
     return key_flags
 
   def AppendFlagValues(self, flag_values):
-    """Appends flags registered in another FlagValues instance.
-
-    Args:
-      flag_values: registry to copy from
-    """
+   
     for flag_name, flag in flag_values.FlagDict().iteritems():
-      # Each flags with shortname appears here twice (once under its
-      # normal name, and again with its short name).  To prevent
-      # problems (DuplicateFlagError) with double flag registration, we
-      # perform a check to make sure that the entry we're looking at is
-      # for its normal name.
+      
       if flag_name == flag.name:
         self[flag_name] = flag
 
@@ -774,8 +299,7 @@ class FlagValues:
       raise FlagsError("Flag name must be a string")
     if len(name) == 0:
       raise FlagsError("Flag name cannot be empty")
-    # If running under pychecker, duplicate keys are likely to be
-    # defined.  Disable check for duplicate keys when pycheck'ing.
+    
     if (fl.has_key(name) and not flag.allow_override and
         not fl[name].allow_override and not _RUNNING_PYCHECKER):
       raise DuplicateFlagError(name, self)
@@ -2297,17 +1821,3 @@ DEFINE_flag(HelpshortFlag())
 # Define special flags here so that help may be generated for them.
 _SPECIAL_FLAGS = FlagValues()
 
-
-# lhuang
-
-##DEFINE_string(
-##    'flagfile', "",
-##    "Insert flag definitions from the given file into the command line.",
-##    _SPECIAL_FLAGS)
-
-##DEFINE_string(
-##    'undefok', "",
-##    "comma-separated list of flag names that it is okay to specify "
-##    "on the command line even if the program does not define a flag "
-##    "with that name.  IMPORTANT: flags in this list that have "
-##    "arguments MUST use the --flag=value format.", _SPECIAL_FLAGS)
