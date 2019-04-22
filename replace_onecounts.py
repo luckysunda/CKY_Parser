@@ -1,9 +1,3 @@
-'''
-Reads the entire tree bank and replaces terminals that occur once
-with the symbol "<unk>"
-
-Author: Ali Ahmed
-'''
 
 
 import sys
@@ -12,7 +6,7 @@ import re
 
 freq = defaultdict(int)
 lines = []
-#sample tree "(TOP (SQ (VBZ Does) (NP (DT this) (NN flight)) (VP (VB serve) (NP (NN dinner)))))"
+
 unis = []
 multis = []
 
