@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-'''A Penn Treebank-style tree
-   author: Liang Huang <lhuang@isi.edu>
-   modified: by Ali Ahmed to add "binarize()", "deBinarize()" and "getProductions()"
-'''
 
 import sys
 logs = sys.stderr
@@ -65,13 +61,7 @@ class Tree(object):
 
     @staticmethod
     def _parse(line, pos=0, wrdidx=0, trunc=True):
-        ''' returns a triple:
-            ( (pos, wordindex), is_empty, tree)
-            The is_empty bool tag is used for eliminating emtpy nodes recursively.
-            Note that in preorder traversal, as long as the indices do not advance for empty nodes,
-            it is fine for stuff after the empty nodes.
-        '''
-        ## (TOP (S (ADVP (RB No)) (, ,) (NP (PRP it)) (VP (VBD was) (RB n't) (NP (JJ Black) (NNP Monday))) (. .)))
+       
         assert line[pos]=='(', "tree must starts with a ( ! line=%s, pos=%d, line[pos]=%s" % (line, pos, line[pos])
             
         empty = False
@@ -84,19 +74,16 @@ class Tree(object):
                 if dashpos >= 0:
                     label = label[:dashpos]
 
-                ## also NP=2 coreference (there is NP-2 before)
                 dashpos = label.find("=")            
                 if dashpos >= 0:
                     label = label[:dashpos]
 
-                ## also ADVP|PRT and PRT|ADVP (terrible!)
+               
                 dashpos = label.find("|")            
                 if dashpos >= 0:
                     label = label[:dashpos]
 
             else:
-                ## remove traces
-                ## CAUTION: emptiness is recursive: (NP (-NONE- *T*-1))
                 if label == "-NONE-":
                     empty = True
                 
@@ -131,13 +118,12 @@ class Tree(object):
         assert not is_empty, "The whole tree is empty! " + line
 
         if tree.label != "TOP":
-            # create another node
+         
             tree = Tree(label="TOP", span=tree.span, subs=[tree])
 
         return tree            
         
     def all_label_spans(self):
-        '''get a list of all labeled spans for PARSEVAL'''
 
         if self.is_terminal():
             return []
@@ -173,7 +159,6 @@ class Tree(object):
         
         if self.subs is not None:
         
-            #get number of children. if more than two, put 2...n in temp node
             if len(self.subs) > 2:
                 newLabel = self.label
                 if newLabel[-1] != "'":
@@ -186,8 +171,6 @@ class Tree(object):
                 child.binarize()
 
     def deBinarize(self):
-        '''Assumes that this is a binary tree. if a node has more than 2 children, we MIGHT mess up'''
-        
         if self.subs is not None:
 
             while self.subs[-1].label[-1] == "'":
@@ -195,11 +178,7 @@ class Tree(object):
 
                 rhsLabel = rhsNode.label
                 #print rhsLabel
-                if rhsLabel[-1] == "'":  #apostrophe indicates this is a temp node, the result of binarization
-                    #take both children of this node
-                    #remove it from the list
-
-                    #print "this node requires fixing"
+                if rhsLabel[-1] == "'":  
                     self.subs.pop()
 
                     self.subs.extend(rhsNode.subs)
@@ -213,8 +192,6 @@ class Tree(object):
 
     def getProductions(self):
         prods = []
-        #print "label = ",self.label
-        #print "word = ", self.word
 
         if self.subs is not None:
             if len(self.subs) == 2:
@@ -227,12 +204,10 @@ class Tree(object):
                 prods.append( prod )
                 
             for child in self.subs:
-                #print "production = ", self.label , " => ", child.label
                 childProds = child.getProductions()
                 prods.extend(childProds)
 
         elif self.word is not None:
-            #print "production = ", self.label , " => ", self.word
             prod = (self.label, self.word)
             prods.append( prod )
 
@@ -255,8 +230,6 @@ if __name__ == "__main__":
     flags.DEFINE_integer("max_len", 400, "maximum sentence length")
     flags.DEFINE_boolean("pp", True, "pretty print")
     flags.DEFINE_boolean("height", False, "output the height of each tree")
-#    flags.DEFINE_boolean("wordtags", False, "output word/tag sequence")
-#    flags.DEFINE_boolean("words", False, "output word sequence")
     flags.DEFINE_boolean("clean", False, "clean up functional tags and empty nodes")
     
     argv = FLAGS(sys.argv)
