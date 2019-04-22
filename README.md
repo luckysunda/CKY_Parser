@@ -1,5 +1,5 @@
 # CKY Parser and Experiments
-This is the third assignment of NLU. In this assignment we have two tasks first is to implement CKY and then second task is to compare two short and two long sentences with existing online parsers. 
+This is the third assignment of NLU. In this assignment we have two tasks, first is to implement CKY and then second task is to compare two short and two long sentences with existing online parsers. 
 
 ## How to run
 First preprocess the tree bank to replace single occurence terminals with "\<unk\>"
