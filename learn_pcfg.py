@@ -1,9 +1,3 @@
-'''
-Reads a tree bank of binary parse trees and finds a 
-list of all productions along with their probabilities
-
-Author: Ali Ahmed
-'''
 
 
 from __future__ import division
@@ -19,9 +13,7 @@ for line in sys.stdin:
     line = line.strip()
 
     t = Tree.parse(line)
-    #t.binarize()
-
-    #print t.getProductions()
+  
     prods = t.getProductions()
 
     for (x,y) in prods:
