@@ -1,10 +1,5 @@
 #!/usr/bin/python
 
-'''
-Reads parse trees from a treebank (each line contains one parse tree)
-Converts that tree into a binary tree (input is not necessarily binary)
-'''
-
 
 from tree import Tree
 import sys
