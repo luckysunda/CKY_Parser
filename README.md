@@ -1,5 +1,5 @@
-# PCFG-trainer-CYK-parser
-A small Python program to trains a probabilistic context free grammar using a small subset of parse trees from the Penn Treebank, and a CYK parser that uses that PCFG.
+# CKY Parser and Experiments
+This is the third assignment of NLU. In this assignment we have two tasks first is to implement CKY and then second task is to compare two short and two long sentences with existing online parsers. 
 
 ## How to run
 First preprocess the tree bank to replace single occurence terminals with "\<unk\>"
@@ -26,9 +26,3 @@ Evaluate the results
 ```
 python evalb.py test.trees test.parsed.new
 ```
-
-## Evaluation
-
-Precision = 314/371 = 0.846
-Recall = 314/385 = 0.816
-F-1 score = 0.831
