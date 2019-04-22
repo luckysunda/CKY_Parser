@@ -1,7 +1,9 @@
 import os.path
 import argparse
 import grammar_converter
-
+import nltk
+from nltk.corpus import treebank
+nltk.download('treebank')
 
 class Node:
     """
